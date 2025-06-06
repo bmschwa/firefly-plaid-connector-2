@@ -16,6 +16,7 @@ import kotlin.time.Duration.Companion.minutes
 
 typealias IntervalMinutes = Int
 typealias PlaidSyncCursor = String
+typealias ResultCallbackUrl = String
 
 /**
  * Orchestrates the polled sync process.
@@ -28,6 +29,10 @@ typealias PlaidSyncCursor = String
 class PolledSyncOrchestrator(
     @Value("\${fireflyPlaidConnector2.polled.syncFrequencyMinutes}")
     private val syncFrequencyMinutes: IntervalMinutes,
+
+    @Value("\${fireflyPlaidConnector2.polled.resultCallbackUrl}")
+    private val resultCallbackUrl:  ResultCallbackUrl,
+
 
     private val syncHelper: SyncHelper,
     private val cursorManager: CursorManager,
@@ -96,6 +101,15 @@ class PolledSyncOrchestrator(
 
         // Update cursor map after successful processing
         cursorManager.writeCursorMap(cursorMap)
+
+        // If configured, report to callback
+        if (! this.resultCallbackUrl.isNullOrBlank() ){
+            try {
+
+            } catch (e: Exception){
+                logger.error("Failed to post results to %s".format(this.resultCallbackUrl))
+            }
+        }
     }
 
     override fun run() {
