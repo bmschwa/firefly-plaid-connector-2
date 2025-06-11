@@ -44,11 +44,13 @@ class SyncHelper(
     }
 
     protected suspend fun validateFireflyApiVersion() {
+        logger.trace("Confirming %s is at least version %s".format(fireflyTxApi.getBaseUrl(), MINIMUM_FIREFLY_VERSION))
         val fireflyVersion = fireflyAboutApi.getAbout().body().data.version
         if (!VersionComparison.isVersionSufficient(MINIMUM_FIREFLY_VERSION, fireflyVersion)) {
             throw RuntimeException("This version of the connector requires at least version $MINIMUM_FIREFLY_VERSION " +
                 "of Firefly; version $fireflyVersion found")
         }
+        logger.debug("%s running version %s".format(fireflyTxApi.getBaseUrl(), fireflyVersion))
     }
 
     fun getAllPlaidAccessTokenAccountIdSets():
