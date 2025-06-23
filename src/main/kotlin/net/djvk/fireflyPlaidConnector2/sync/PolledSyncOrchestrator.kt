@@ -16,7 +16,7 @@ import kotlin.time.Duration.Companion.minutes
 
 typealias IntervalMinutes = Int
 typealias PlaidSyncCursor = String
-typealias ResultCallbackUrl = String
+typealias ResultCallbackUrl = String?
 
 /**
  * Orchestrates the polled sync process.
@@ -30,8 +30,8 @@ class PolledSyncOrchestrator(
     @Value("\${fireflyPlaidConnector2.polled.syncFrequencyMinutes}")
     private val syncFrequencyMinutes: IntervalMinutes,
 
-    @Value("\${fireflyPlaidConnector2.polled.resultCallbackUrl}")
-    private val resultCallbackUrl:  ResultCallbackUrl,
+    @Value("\${fireflyPlaidConnector2.polled.resultCallbackUrl:}")
+    private val resultCallbackUrl: ResultCallbackUrl,
 
 
     private val syncHelper: SyncHelper,
@@ -102,14 +102,6 @@ class PolledSyncOrchestrator(
         // Update cursor map after successful processing
         cursorManager.writeCursorMap(cursorMap)
 
-        // If configured, report to callback
-        if (! this.resultCallbackUrl.isNullOrBlank() ){
-            try {
-
-            } catch (e: Exception){
-                logger.error("Failed to post results to %s".format(this.resultCallbackUrl))
-            }
-        }
     }
 
     override fun run() {
@@ -136,6 +128,16 @@ class PolledSyncOrchestrator(
                     // Trigger GC to try to reduce heap size
                     logger.trace("Calling System.gc()")
                     System.gc()
+
+                    // If configured, report to callback
+                    if (! resultCallbackUrl.isNullOrBlank() ){
+                        try {
+                            logger.trace("Webcallback....")
+                        } catch (e: Exception){
+                            logger.error("Failed to post results to $resultCallbackUrl: $e")
+                        }
+
+                    }
 
                     // Sleep until next poll
                     logger.info("Sleeping $syncFrequencyMinutes")
