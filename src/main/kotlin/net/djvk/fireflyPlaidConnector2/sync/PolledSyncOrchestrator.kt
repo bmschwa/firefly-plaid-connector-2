@@ -4,9 +4,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.Contextual
-import kotlinx.serialization.Serializable
 
+
+import net.djvk.fireflyPlaidConnector2.constants.*
+import net.djvk.fireflyPlaidConnector2.util.WebhookData
 import net.djvk.fireflyPlaidConnector2.transactions.FireflyAccountId
 import net.djvk.fireflyPlaidConnector2.transactions.TransactionConverter
 import org.slf4j.LoggerFactory
@@ -23,23 +24,16 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import net.djvk.fireflyPlaidConnector2.api.firefly.models.Webhook
 import java.time.Clock
 import java.time.Duration
 
-typealias IntervalMinutes = Int
+
 typealias PlaidSyncCursor = String
 typealias ResultCallbackUrl = String?
+typealias ResultCallbackBearerToken = String?
 
 
-@Serializable
-data class WebhookData(
-
-    val loopDurationMillis: Int
-)
-
-/**
- * Orchestrates the polled sync process.
+/* Orchestrates the polled sync process.
  *
  * Handles the "polled" sync mode, which periodically polls for new transactions and processes them.
  * This class coordinates the different components involved in the sync process.
@@ -53,6 +47,8 @@ class PolledSyncOrchestrator(
     @Value("\${fireflyPlaidConnector2.polled.resultCallbackUrl:}")
     private val resultCallbackUrl: ResultCallbackUrl,
 
+    @Value("\${fireflyPlaidConnector2.polled.resultCallbackBearerToken:}")
+    private val resultCallbackBearerToken: ResultCallbackBearerToken,
 
     private val syncHelper: SyncHelper,
     private val cursorManager: CursorManager,
@@ -129,16 +125,20 @@ class PolledSyncOrchestrator(
     ) {
         logger.info("Sending results to $resultCallbackUrl")
         val webhookData = WebhookData(
-            loopDuration.toMillis())
+            IntervalMilliSecs(loopDuration.toMillis())
+        )
         HttpClient(CIO).use { client ->
             val response: HttpResponse = client.post("$resultCallbackUrl") {
-                header(HttpHeaders.Authorization, "Bearer GdxY7vELMlfJyBSu6oTJoUASJ6JQf3s0")
+
+                if (!resultCallbackBearerToken.isNullOrBlank()) {
+                    header(HttpHeaders.Authorization, "Bearer $resultCallbackBearerToken")
+
+                }
                 contentType(ContentType.Application.Json)
                 setBody(webhookData)
             }
 
-            println("Response status: ${response.status}")
-            println("Response body: ${response.bodyAsText()}")
+            logger.info("Webhook Response (${response.status}): ${response.bodyAsText()}")
         } // HttpClient is closed here automatically
     }
 

@@ -13,7 +13,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.6"
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
-    kotlin("plugin.serialization") version "1.9.10"
+    kotlin("plugin.serialization") version "1.9.24"
 }
 
 group = "net.djvk"
