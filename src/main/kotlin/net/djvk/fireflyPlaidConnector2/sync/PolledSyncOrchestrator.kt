@@ -4,6 +4,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
+
 import net.djvk.fireflyPlaidConnector2.transactions.FireflyAccountId
 import net.djvk.fireflyPlaidConnector2.transactions.TransactionConverter
 import org.slf4j.LoggerFactory
@@ -14,9 +17,26 @@ import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.minutes
 
+// For the webhook
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import net.djvk.fireflyPlaidConnector2.api.firefly.models.Webhook
+import java.time.Clock
+import java.time.Duration
+
 typealias IntervalMinutes = Int
 typealias PlaidSyncCursor = String
 typealias ResultCallbackUrl = String?
+
+
+@Serializable
+data class WebhookData(
+
+    val loopDurationMillis: Int
+)
 
 /**
  * Orchestrates the polled sync process.
@@ -78,7 +98,7 @@ class PolledSyncOrchestrator(
         )
 
         // Convert Plaid transactions to Firefly format
-        logger.trace("Converting Plaid transactions to Firefly transactions")
+        logger.debug("Converting plaidTransactions transactions to Firefly ${existingFireflyTxs.size} transactions")
         val convertResult = converter.convertPollSync(
             accountMap,
             plaidTransactions.created,
@@ -104,6 +124,24 @@ class PolledSyncOrchestrator(
 
     }
 
+    suspend fun hookResults(
+        loopDuration: Duration
+    ) {
+        logger.info("Sending results to $resultCallbackUrl")
+        val webhookData = WebhookData(
+            loopDuration.toMillis())
+        HttpClient(CIO).use { client ->
+            val response: HttpResponse = client.post("$resultCallbackUrl") {
+                header(HttpHeaders.Authorization, "Bearer GdxY7vELMlfJyBSu6oTJoUASJ6JQf3s0")
+                contentType(ContentType.Application.Json)
+                setBody(webhookData)
+            }
+
+            println("Response status: ${response.status}")
+            println("Response body: ${response.bodyAsText()}")
+        } // HttpClient is closed here automatically
+    }
+
     override fun run() {
         runBlocking {
             syncHelper.setApiCreds()
@@ -115,12 +153,13 @@ class PolledSyncOrchestrator(
                 // Get account mappings for the polling loop
                 val (accountMap, accountAccessTokenSequence) = syncHelper.getAllPlaidAccessTokenAccountIdSets()
                 val cursorMap = cursorManager.readCursorMap()
-
+                val clock = Clock.systemUTC()
                 /**
                  * Periodic polling loop
                  */
                 do {
                     logger.debug("Polling loop start")
+                    val loop_start = clock.instant()
 
                     // Process transactions
                     processTransactions(accountMap, accountAccessTokenSequence, cursorMap)
@@ -132,7 +171,7 @@ class PolledSyncOrchestrator(
                     // If configured, report to callback
                     if (! resultCallbackUrl.isNullOrBlank() ){
                         try {
-                            logger.trace("Webcallback....")
+                            hookResults(Duration.between(loop_start, clock.instant()))
                         } catch (e: Exception){
                             logger.error("Failed to post results to $resultCallbackUrl: $e")
                         }
