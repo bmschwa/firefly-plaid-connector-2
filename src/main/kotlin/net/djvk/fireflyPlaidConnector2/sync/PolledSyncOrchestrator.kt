@@ -4,6 +4,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+
+
+import net.djvk.fireflyPlaidConnector2.constants.*
+import net.djvk.fireflyPlaidConnector2.util.WebhookData
 import net.djvk.fireflyPlaidConnector2.transactions.FireflyAccountId
 import net.djvk.fireflyPlaidConnector2.transactions.TransactionConverter
 import org.slf4j.LoggerFactory
@@ -14,11 +18,22 @@ import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.minutes
 
-typealias IntervalMinutes = Int
-typealias PlaidSyncCursor = String
+// For the webhook
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import java.time.Clock
+import java.time.Duration
 
-/**
- * Orchestrates the polled sync process.
+
+typealias PlaidSyncCursor = String
+typealias ResultCallbackUrl = String?
+typealias ResultCallbackBearerToken = String?
+
+
+/* Orchestrates the polled sync process.
  *
  * Handles the "polled" sync mode, which periodically polls for new transactions and processes them.
  * This class coordinates the different components involved in the sync process.
@@ -28,6 +43,12 @@ typealias PlaidSyncCursor = String
 class PolledSyncOrchestrator(
     @Value("\${fireflyPlaidConnector2.polled.syncFrequencyMinutes}")
     private val syncFrequencyMinutes: IntervalMinutes,
+
+    @Value("\${fireflyPlaidConnector2.polled.resultCallbackUrl:}")
+    private val resultCallbackUrl: ResultCallbackUrl,
+
+    @Value("\${fireflyPlaidConnector2.polled.resultCallbackBearerToken:}")
+    private val resultCallbackBearerToken: ResultCallbackBearerToken,
 
     private val syncHelper: SyncHelper,
     private val cursorManager: CursorManager,
@@ -73,7 +94,7 @@ class PolledSyncOrchestrator(
         )
 
         // Convert Plaid transactions to Firefly format
-        logger.trace("Converting Plaid transactions to Firefly transactions")
+        logger.debug("Converting plaidTransactions transactions to Firefly ${existingFireflyTxs.size} transactions")
         val convertResult = converter.convertPollSync(
             accountMap,
             plaidTransactions.created,
@@ -96,6 +117,29 @@ class PolledSyncOrchestrator(
 
         // Update cursor map after successful processing
         cursorManager.writeCursorMap(cursorMap)
+
+    }
+
+    suspend fun hookResults(
+        loopDuration: Duration
+    ) {
+        logger.info("Sending results to $resultCallbackUrl")
+        val webhookData = WebhookData(
+            IntervalMilliSecs(loopDuration.toMillis())
+        )
+        HttpClient(CIO).use { client ->
+            val response: HttpResponse = client.post("$resultCallbackUrl") {
+
+                if (!resultCallbackBearerToken.isNullOrBlank()) {
+                    header(HttpHeaders.Authorization, "Bearer $resultCallbackBearerToken")
+
+                }
+                contentType(ContentType.Application.Json)
+                setBody(webhookData)
+            }
+
+            logger.info("Webhook Response (${response.status}): ${response.bodyAsText()}")
+        } // HttpClient is closed here automatically
     }
 
     override fun run() {
@@ -109,12 +153,13 @@ class PolledSyncOrchestrator(
                 // Get account mappings for the polling loop
                 val (accountMap, accountAccessTokenSequence) = syncHelper.getAllPlaidAccessTokenAccountIdSets()
                 val cursorMap = cursorManager.readCursorMap()
-
+                val clock = Clock.systemUTC()
                 /**
                  * Periodic polling loop
                  */
                 do {
                     logger.debug("Polling loop start")
+                    val loop_start = clock.instant()
 
                     // Process transactions
                     processTransactions(accountMap, accountAccessTokenSequence, cursorMap)
@@ -122,6 +167,16 @@ class PolledSyncOrchestrator(
                     // Trigger GC to try to reduce heap size
                     logger.trace("Calling System.gc()")
                     System.gc()
+
+                    // If configured, report to callback
+                    if (! resultCallbackUrl.isNullOrBlank() ){
+                        try {
+                            hookResults(Duration.between(loop_start, clock.instant()))
+                        } catch (e: Exception){
+                            logger.error("Failed to post results to $resultCallbackUrl: $e")
+                        }
+
+                    }
 
                     // Sleep until next poll
                     logger.info("Sleeping $syncFrequencyMinutes")
