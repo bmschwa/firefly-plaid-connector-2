@@ -7,8 +7,7 @@ import kotlinx.coroutines.runBlocking
 
 
 import net.djvk.fireflyPlaidConnector2.constants.*
-import net.djvk.fireflyPlaidConnector2.util.WebhookData
-import net.djvk.fireflyPlaidConnector2.transactions.FireflyAccountId
+import net.djvk.fireflyPlaidConnector2.constants.FireflyAccountId
 import net.djvk.fireflyPlaidConnector2.transactions.TransactionConverter
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.DisposableBean
@@ -17,17 +16,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.minutes
-
-// For the webhook
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
-import net.djvk.fireflyPlaidConnector2.api.firefly.models.Webhook
 
 import java.time.Clock
 import java.time.Duration
@@ -65,6 +53,8 @@ class PolledSyncOrchestrator(
 
     private val terminated = AtomicBoolean(false)
     private lateinit var mainJob: Job
+
+    private val webHookService = WebhookService(resultCallbackUrl, resultCallbackBearerToken)
 
     /**
      * Initializes cursors for access tokens that don't have one yet.
@@ -123,41 +113,25 @@ class PolledSyncOrchestrator(
         // Update cursor map after successful processing
         cursorManager.writeCursorMap(cursorMap)
 
-    }
-
-    suspend fun hookResults(
-        loopDuration: Duration
-    ) {
-        logger.info("Sending results to $resultCallbackUrl")
-        val webhookData = WebhookData(
-            IntervalMilliSecs(loopDuration.toMillis())
-        )
-
-
-        val hooker = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    prettyPrint = false
-                    isLenient = true
-                })
+        if (webHookService.enabled()){
+            try {
+                webHookService.addDataForHook(
+                    existingFireflyTxs,
+                    plaidTransactions,
+                    convertResult.creates,
+                    convertResult.updates,
+                    convertResult.deletes
+                )
+            }catch(e: Exception){
+                logger.error("Failed Adding Data for Webhook: $e")
+            }finally{
+                logger.debug("Called DataForHook")
             }
+        }else{
+            logger.trace("Web Service Not Enabled.  No data provided")
         }
 
 
-        hooker.use { hooker ->
-            val response: HttpResponse = hooker.post("$resultCallbackUrl") {
-
-                if (!resultCallbackBearerToken.isNullOrBlank()) {
-                    header(HttpHeaders.Authorization, "Bearer $resultCallbackBearerToken")
-
-                }
-                contentType(ContentType.Application.Json)
-                setBody(webhookData)
-            }
-
-            logger.info("Webhook Response (${response.status}): ${response.bodyAsText()}")
-        } // HttpClient is closed here automatically
     }
 
     override fun run() {
@@ -187,14 +161,14 @@ class PolledSyncOrchestrator(
                     System.gc()
 
                     // If configured, report to callback
-                    if (! resultCallbackUrl.isNullOrBlank() ){
+                    if (webHookService.enabled()){
                         try {
-                            hookResults(Duration.between(loop_start, clock.instant()))
+                            webHookService.post(Duration.between(loop_start, clock.instant()))
                         } catch (e: Exception){
                             logger.error("Failed to post results to $resultCallbackUrl: $e")
                         }
-
                     }
+
 
                     // Sleep until next poll
                     logger.info("Sleeping $syncFrequencyMinutes")
@@ -203,6 +177,7 @@ class PolledSyncOrchestrator(
             }
         }
     }
+
 
     override fun destroy() {
         logger.info("Shutting down ${this::class}")

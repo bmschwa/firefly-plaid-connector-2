@@ -7,4 +7,7 @@ import net.djvk.fireflyPlaidConnector2.constants.IntervalMilliSecs
 data class WebhookData(
 
     val loopDurationMs: IntervalMilliSecs
-)
+
+){
+
+}
