@@ -32,6 +32,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.6")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.6")
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.mock)
     testImplementation("org.springframework.boot:spring-boot-starter-test")

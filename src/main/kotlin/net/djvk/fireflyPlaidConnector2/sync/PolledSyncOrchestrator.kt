@@ -24,6 +24,11 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.json.Json
+import net.djvk.fireflyPlaidConnector2.api.firefly.models.Webhook
+
 import java.time.Clock
 import java.time.Duration
 
@@ -127,8 +132,21 @@ class PolledSyncOrchestrator(
         val webhookData = WebhookData(
             IntervalMilliSecs(loopDuration.toMillis())
         )
-        HttpClient(CIO).use { client ->
-            val response: HttpResponse = client.post("$resultCallbackUrl") {
+
+
+        val hooker = HttpClient(CIO) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    prettyPrint = false
+                    isLenient = true
+                })
+            }
+        }
+
+
+        hooker.use { hooker ->
+            val response: HttpResponse = hooker.post("$resultCallbackUrl") {
 
                 if (!resultCallbackBearerToken.isNullOrBlank()) {
                     header(HttpHeaders.Authorization, "Bearer $resultCallbackBearerToken")
