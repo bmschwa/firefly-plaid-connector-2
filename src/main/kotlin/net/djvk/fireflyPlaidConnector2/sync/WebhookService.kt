@@ -31,7 +31,8 @@ import org.springframework.boot.system.SystemProperties
 import org.springframework.core.SpringVersion
 import org.springframework.stereotype.Component
 
-
+import net.djvk.fireflyPlaidConnector2.constants.ResultCallbackUrl
+import net.djvk.fireflyPlaidConnector2.constants.ResultCallbackBearerToken
 import java.time.Duration
 
 @Component

@@ -20,13 +20,12 @@ import kotlin.time.Duration.Companion.minutes
 import java.time.Clock
 import java.time.Duration
 
+import net.djvk.fireflyPlaidConnector2.constants.IntervalMinutes
+import net.djvk.fireflyPlaidConnector2.constants.ResultCallbackUrl
+import net.djvk.fireflyPlaidConnector2.constants.ResultCallbackBearerToken
 
-typealias PlaidSyncCursor = String
-typealias ResultCallbackUrl = String?
-typealias ResultCallbackBearerToken = String?
-
-
-/* Orchestrates the polled sync process.
+/**
+ * Orchestrates the polled sync process.
  *
  * Handles the "polled" sync mode, which periodically polls for new transactions and processes them.
  * This class coordinates the different components involved in the sync process.
@@ -177,7 +176,6 @@ class PolledSyncOrchestrator(
             }
         }
     }
-
 
     override fun destroy() {
         logger.info("Shutting down ${this::class}")
