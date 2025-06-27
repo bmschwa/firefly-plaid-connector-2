@@ -31,12 +31,10 @@ import net.djvk.fireflyPlaidConnector2.api.firefly.models.TransactionRead
 import net.djvk.fireflyPlaidConnector2.constants.FireflyTransactionId
 import net.djvk.fireflyPlaidConnector2.transactions.FireflyTransactionDto
 
-import org.springframework.beans.factory.annotation.Value
+
 import org.springframework.boot.SpringBootVersion
-import org.springframework.boot.info.BuildProperties
 import org.springframework.boot.system.SystemProperties
 import org.springframework.core.SpringVersion
-import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 
 
