@@ -22,29 +22,35 @@ import io.ktor.http.*
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
+
+import kotlinx.serialization.json.putJsonObject
 import net.djvk.fireflyPlaidConnector2.api.firefly.models.TransactionRead
 
-import net.djvk.fireflyPlaidConnector2.constants.IntervalMilliSecs
 import net.djvk.fireflyPlaidConnector2.constants.FireflyTransactionId
 import net.djvk.fireflyPlaidConnector2.transactions.FireflyTransactionDto
 
-
-import net.djvk.fireflyPlaidConnector2.util.WebhookData
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.SpringBootVersion
+import org.springframework.boot.info.BuildProperties
+import org.springframework.boot.system.SystemProperties
+import org.springframework.core.SpringVersion
+import org.springframework.core.env.Environment
+import org.springframework.stereotype.Component
 
 
 import java.time.Duration
 
+@Component
 class WebhookService (
-
     private val resultCallbackUrl: ResultCallbackUrl,
-    private val resultCallbackBearerToken: ResultCallbackBearerToken,
-
-    )  {
+    private val resultCallbackBearerToken: ResultCallbackBearerToken
+ )  {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-
-    private var webhookClient :HttpClient? = null
+    private var lastJsonData: JsonElement? = null
+    private var webhookClient: HttpClient? = null
     init{
         logger.trace("Init Webhook Client")
 
@@ -67,10 +73,24 @@ class WebhookService (
                        creates: List<FireflyTransactionDto>,
                        updates: List<FireflyTransactionDto>,
                        deletes: List<FireflyTransactionId>){
-        logger.debug("Adding some data for callback")
+        if (lastJsonData != null){
+            logger.warn("Data for Webhook provided, but will be overwritten before sent")
+        }else{
+            logger.debug("Adding some data for callback")
+        }
 
-        val t = buildJsonObject {
+        lastJsonData = buildJsonObject {
             put("fireFlyTransactionsRead", JsonPrimitive(ffTx.size))
+            putJsonObject("plaidTransactions") {
+                put("n_created", JsonPrimitive(ptr.created.size))
+                put("n_updated", JsonPrimitive(ptr.updated.size))
+                put("n_deleted", JsonPrimitive(ptr.deleted.size))
+            }
+            putJsonObject("fireFlyTransactionConversions") {
+                put("n_created", JsonPrimitive(creates.size))
+                put("n_updated", JsonPrimitive(updates.size))
+                put("n_deleted", JsonPrimitive(deletes.size))
+            }
         }
     }
 
@@ -85,9 +105,24 @@ class WebhookService (
         loopDuration: Duration){
 
         logger.info("Sending results to $resultCallbackUrl")
-        val webhookData = WebhookData(
-            IntervalMilliSecs(loopDuration.toMillis())
-        )
+
+        if (lastJsonData == null){
+            logger.error("Cannot send empty webhook data")
+            return
+        }
+
+        val toSend = buildJsonObject {
+            put("loopDurationSecs", JsonPrimitive(loopDuration.toMillis()/1000.0))
+            put( "springVersion", JsonPrimitive(SpringVersion.getVersion()))
+            put( "springBootVersion", JsonPrimitive(SpringBootVersion.getVersion()))
+            put("javaVersion",  JsonPrimitive(SystemProperties.get("java.version")))
+
+            // Would love to add the appVersion
+            //put("connectorVersion", JsonPrimitive(environment.getProperty("build.version", "unknown")))
+
+            put("results", lastJsonData!!)
+        }
+
 
         webhookClient?.use { webhookClient ->
             val response: HttpResponse = webhookClient.post("$resultCallbackUrl") {
@@ -97,10 +132,11 @@ class WebhookService (
 
                 }
                 contentType(ContentType.Application.Json)
-                setBody(webhookData)
+                setBody(toSend)
             }
 
             logger.info("Webhook Response (${response.status}): ${response.bodyAsText()}")
         } // HttpClient is closed here automatically
+        lastJsonData = null
     }
 }
