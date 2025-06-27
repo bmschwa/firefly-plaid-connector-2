@@ -1,6 +1,5 @@
 package net.djvk.fireflyPlaidConnector2.sync
 
-import io.ktor.util.Identity.decode
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
@@ -10,7 +9,6 @@ import kotlin.test.assertEquals
 import kotlinx.serialization.json.*
 
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json.Default.decodeFromString
 import net.djvk.fireflyPlaidConnector2.api.firefly.models.TransactionRead
 import net.djvk.fireflyPlaidConnector2.api.plaid.PlaidTransactionId
 import net.djvk.fireflyPlaidConnector2.api.plaid.models.Transaction
@@ -20,8 +18,6 @@ import net.djvk.fireflyPlaidConnector2.transactions.FireflyTransactionDto
 
 import java.time.Duration
 import kotlin.test.assertContains
-import kotlin.test.assertTrue
-
 
 internal class WebhookServiceTest {
     // Lots more to learn: https://stackoverflow.com/a/35554077
